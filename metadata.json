@@ -1,0 +1,6 @@
+{
+  "name": "Aether",
+  "description": "A modern web chatbot interface powered by Google Gemini, featuring real-time stream responses, conversational history, and interactive features.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
