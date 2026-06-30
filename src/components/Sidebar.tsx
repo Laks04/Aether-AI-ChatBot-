@@ -45,6 +45,8 @@ interface SidebarProps {
   setTemperature: (temp: number) => void;
   systemInstruction: string;
   setSystemInstruction: (instr: string) => void;
+  currentUser?: string | null;
+  onLogout?: () => void;
 }
 
 export default function Sidebar({
@@ -62,6 +64,8 @@ export default function Sidebar({
   setTemperature,
   systemInstruction,
   setSystemInstruction,
+  currentUser,
+  onLogout,
 }: SidebarProps) {
   const [sidebarTab, setSidebarTab] = useState<"chats" | "settings" | "analytics">("chats");
 
@@ -500,8 +504,30 @@ export default function Sidebar({
           </AnimatePresence>
         </div>
 
-        {/* Footer info */}
-        <div className="border-t border-purple-950/20 p-4">
+        {/* Footer info & Session Status */}
+        <div className="border-t border-purple-950/20 p-4 space-y-2.5">
+          {currentUser && (
+            <div className="flex items-center justify-between bg-slate-900/30 border border-slate-900/40 rounded-xl p-2.5 shadow-inner">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <div className="h-8 w-8 shrink-0 rounded-lg bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-xs font-mono font-bold text-pink-400 uppercase">
+                  {currentUser.substring(0, 2)}
+                </div>
+                <div className="flex flex-col truncate">
+                  <span className="text-xs font-semibold text-slate-200 truncate">{currentUser}</span>
+                  <span className="text-[9px] text-slate-500 font-mono tracking-wider uppercase">Secure Sync</span>
+                </div>
+              </div>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="px-2 py-1.5 rounded-lg border border-slate-800 hover:border-pink-500/40 hover:bg-pink-500/5 text-[9px] font-bold text-slate-400 hover:text-pink-400 transition-all uppercase tracking-wider shrink-0 cursor-pointer"
+                  id="logout-btn"
+                >
+                  Logout
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-xl bg-slate-900/40 p-3">
             <span className="text-[11px] font-medium text-slate-500">API Gateway</span>
             <div className="flex items-center gap-1.5">

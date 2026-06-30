@@ -29,6 +29,7 @@ import { PERSONA_PRESETS } from "./presets";
 import Sidebar from "./components/Sidebar";
 import MessageItem from "./components/MessageItem";
 import { motion, AnimatePresence } from "motion/react";
+import Auth from "./components/Auth";
 
 const LOCAL_STORAGE_KEY = "gemini_chatbot_conversations";
 const ACTIVE_CONV_KEY = "gemini_chatbot_active_id";
@@ -120,6 +121,11 @@ const renderPromptCategoryIcon = (iconName: string) => {
 };
 
 export default function App() {
+  // Authentication & Session States
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // Navigation & UI States
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -145,9 +151,96 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load initial data
+  // Fetch all conversations for the authenticated user from backend
+  const fetchConversations = async (token: string) => {
+    try {
+      const res = await fetch("/api/conversations", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data);
+        
+        const storedActiveId = localStorage.getItem(ACTIVE_CONV_KEY);
+        if (storedActiveId && data.some((c: any) => c.id === storedActiveId)) {
+          setActiveConversationId(storedActiveId);
+        } else if (data.length > 0) {
+          setActiveConversationId(data[0].id);
+        } else {
+          // Initialize first default conversation
+          const initialConv: Conversation = {
+            id: "default-chat",
+            title: "Aether Assistant",
+            messages: [
+              {
+                id: "welcome-1",
+                role: "assistant",
+                content: "Hi! I am Aether, your AI assistant. How can I help you today? Feel free to ask me anything about programming, writing, language learning, or brainstorming!",
+                timestamp: new Date().toISOString(),
+              }
+            ],
+            systemInstruction: "You are a helpful assistant.",
+            temperature: 0.7,
+            modelName: "groq:llama-3.3-70b-versatile",
+            createdAt: new Date().toISOString(),
+          };
+          setConversations([initialConv]);
+          setActiveConversationId(initialConv.id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch user conversations:", err);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  // Sync a single conversation payload to the backend
+  const syncConversationToServer = async (conv: Conversation) => {
+    if (!authToken) return;
+    try {
+      await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ conversation: conv })
+      });
+    } catch (err) {
+      console.error("Failed to sync conversation:", err);
+    }
+  };
+
+  // Logout session
+  const handleLogout = async () => {
+    const token = localStorage.getItem("aether_auth_token") || authToken;
+    if (token) {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      }).catch(() => {});
+    }
+    localStorage.removeItem("aether_auth_token");
+    localStorage.removeItem("aether_auth_username");
+    localStorage.removeItem(ACTIVE_CONV_KEY);
+    setAuthToken(null);
+    setCurrentUser(null);
+    setConversations([]);
+    setActiveConversationId(null);
+    setIsAuthLoading(false);
+  };
+
+  // Verify auth session on mount
   useEffect(() => {
-    // Check API Key configuration
+    const token = localStorage.getItem("aether_auth_token");
+    const storedUser = localStorage.getItem("aether_auth_username");
+
+    // Check configuration
     fetch("/api/config")
       .then((res) => res.json())
       .then((data) => {
@@ -155,57 +248,51 @@ export default function App() {
         setHasGroqApiKey(data.hasGroqApiKey);
       })
       .catch((err) => {
-        console.error("Failed to fetch server config:", err);
-        setHasApiKey(false);
-        setHasGroqApiKey(false);
+        console.error("Failed to fetch config:", err);
       });
 
-    const storedConvs = localStorage.getItem(LOCAL_STORAGE_KEY);
-    const storedActiveId = localStorage.getItem(ACTIVE_CONV_KEY);
-
-    if (storedConvs) {
-      try {
-        const parsed = JSON.parse(storedConvs) as Conversation[];
-        setConversations(parsed);
-        if (storedActiveId && parsed.some(c => c.id === storedActiveId)) {
-          setActiveConversationId(storedActiveId);
-        } else if (parsed.length > 0) {
-          setActiveConversationId(parsed[0].id);
+    if (token && storedUser) {
+      fetch("/api/auth/me", {
+        headers: {
+          "Authorization": `Bearer ${token}`
         }
-      } catch (e) {
-        console.error("Failed to parse conversations from local storage", e);
-      }
-    } else {
-      // Create initial conversation
-      const initialConv: Conversation = {
-        id: "default-chat",
-        title: "Aether Assistant",
-        messages: [
-          {
-            id: "welcome-1",
-            role: "assistant",
-            content: "Hi! I am Aether, your AI assistant. How can I help you today? Feel free to ask me anything about programming, writing, language learning, or brainstorming!",
-            timestamp: new Date().toISOString(),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.authenticated) {
+            setAuthToken(token);
+            setCurrentUser(data.username);
+            fetchConversations(token);
+          } else {
+            handleLogout();
           }
-        ],
-        systemInstruction: "You are a helpful assistant.",
-        temperature: 0.7,
-        modelName: "groq:llama-3.3-70b-versatile",
-        createdAt: new Date().toISOString(),
-      };
-      setConversations([initialConv]);
-      setActiveConversationId(initialConv.id);
+        })
+        .catch((err) => {
+          console.error("Auto-auth verification error:", err);
+          setIsAuthLoading(false);
+        });
+    } else {
+      setIsAuthLoading(false);
     }
   }, []);
 
-  // Save changes to localStorage
+  const prevConversationsRef = useRef<Conversation[]>([]);
+
+  // Automatically save conversation state modifications to server
   useEffect(() => {
-    if (conversations.length > 0) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(conversations));
-    } else {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    if (!authToken || isAuthLoading) return;
+
+    const prev = prevConversationsRef.current;
+    
+    for (const conv of conversations) {
+      const prevConv = prev.find(p => p.id === conv.id);
+      if (!prevConv || JSON.stringify(prevConv) !== JSON.stringify(conv)) {
+        syncConversationToServer(conv);
+      }
     }
-  }, [conversations]);
+
+    prevConversationsRef.current = conversations;
+  }, [conversations, authToken, isAuthLoading]);
 
   useEffect(() => {
     if (activeConversationId) {
@@ -297,7 +384,7 @@ export default function App() {
     }, 100);
   };
 
-  const handleDeleteConversation = (id: string) => {
+  const handleDeleteConversation = async (id: string) => {
     const remaining = conversations.filter(c => c.id !== id);
     setConversations(remaining);
     
@@ -306,6 +393,19 @@ export default function App() {
         setActiveConversationId(remaining[0].id);
       } else {
         setActiveConversationId(null);
+      }
+    }
+
+    if (authToken) {
+      try {
+        await fetch(`/api/conversations/${id}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${authToken}`
+          }
+        });
+      } catch (err) {
+        console.error("Failed to delete conversation from server:", err);
       }
     }
   };
@@ -386,6 +486,7 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`
         },
         body: JSON.stringify({
           messages: payloadMessages,
@@ -514,6 +615,28 @@ export default function App() {
     }
   };
 
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#050507] text-slate-400 gap-4">
+        <RefreshCw className="h-8 w-8 text-pink-500 animate-spin" />
+        <span className="text-xs font-semibold uppercase tracking-wider font-mono text-transparent bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text">Initializing Aether Space...</span>
+      </div>
+    );
+  }
+
+  if (!authToken) {
+    return (
+      <Auth 
+        onSuccess={(token, user) => {
+          setAuthToken(token);
+          setCurrentUser(user);
+          setIsAuthLoading(true);
+          fetchConversations(token);
+        }} 
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen bg-[#09090b] text-slate-200 font-sans overflow-hidden">
       
@@ -533,6 +656,8 @@ export default function App() {
         setTemperature={handleTemperatureChange}
         systemInstruction={systemInstruction}
         setSystemInstruction={handleSystemInstructionChange}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Chat Panel */}
