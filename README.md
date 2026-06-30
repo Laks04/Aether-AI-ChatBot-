@@ -2,7 +2,7 @@
 
 A sleek, modern, high-contrast workspace crafted in **React 19**, **Vite**, and **Express**, with beautiful fluid animations powered by **motion** (Framer Motion) and styled with the precision of **Tailwind CSS v4**. 
 
-Aether serves as a powerful local assistant for writing, coding, brainstorming, and translation, featuring custom interactive tooling designed to elevate your productivity.
+Aether serves as a secure, persistent conversational chatbot featuring private container-level memory, custom interactive prompts, multi-format exports, and real-time chat optimization utilities.
 
 ---
 
@@ -12,6 +12,15 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 
 ### Key Capabilities
 
+*   **🔐 Custom Authentication Gateway**: 
+    *   Secure **Sign In** and **Create Space** registration form.
+    *   Cryptographically-hashed passwords powered by `PBKDF2` (1000 iterations, 64-byte key length with secure random salting) stored on the container filesystem.
+    *   30-day secure bearer token sessions stored locally and validated on each page refresh.
+*   **💾 Infinite Memory & Persistent Storage**: 
+    *   All chats, presets, and customized system parameters are synchronized to the server in real-time.
+    *   Memory is persisted inside the container's disk (`data/conversations.json`), guaranteeing that user history remains intact **even after hard browser refreshes, cache clearances, or device switching**.
+*   **🗑️ Secure Chat Deletion**:
+    *   Full administrative control with the option to instantly and permanently erase individual conversations from both the UI and the server's filesystem storage.
 *   **⚡ Multiple Aether Core Models**: Configured to access highly optimized LLM backends tailored for different tasks:
     *   **Aether Large (Recommended)**: Best for complex reasoning and advanced debugging.
     *   **Aether MoE**: Highly responsive, balanced model for conversational tasks.
@@ -22,7 +31,6 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 *   **🔊 Listen Aloud (Speech Synthesis)**: Integrated narration engine with markdown sanitization. Listen to answers read aloud dynamically with toggle, pulse animations, and automatic speech cancel/reset on unmount.
 *   **📊 Conversation Analytics**: Deep visual insights panel tracking total messages, precise word and character counts, estimated reading times based on human-average speed (WPM), and average AI response lengths.
 *   **💾 Multi-Format File Export**: Instantly export active conversation transcripts as beautifully formatted **Markdown (.md)** files or raw **JSON (.json)** for offline backups and records.
-*   **📁 Persistent Storage**: Automatic client-side synchronization via `localStorage` keeps your chat history intact across browser sessions.
 
 ---
 
@@ -30,6 +38,7 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 
 *   **Frontend**: React 19, Vite 6, Tailwind CSS v4, Motion (Framer Motion)
 *   **Backend**: Node.js Express Server, tsx, esbuild
+*   **Database (File-based Caching)**: High-speed local JSON volumes (`data/`) supporting multi-user isolation.
 *   **Icons**: Lucide React
 *   **Rendering**: React Markdown (v10) for pristine syntax highlighting and text layouts
 
@@ -93,10 +102,14 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 ## 📂 Project Architecture
 
 ```txt
-├── server.ts             # Express server and backend API proxying for security
+├── server.ts             # Express server handling PBKDF2 cryptography, session states, and proxy routes
 ├── index.html            # Primary single-page entry point
 ├── package.json          # Dependency definitions and build pipeline scripts
 ├── tsconfig.json         # TypeScript configuration
+├── data/                 # Container-bound local database filesystem (Git ignored)
+│   ├── users.json        # Encrypted user records & salts
+│   ├── sessions.json     # Active logged-in session tokens
+│   └── conversations.json# Persistent conversation histories organized by username
 ├── src/
 │   ├── main.tsx          # React application bootstrapping entry point
 │   ├── App.tsx           # Primary application logic, state managers, and core view
@@ -104,6 +117,7 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 │   ├── presets.ts        # Modular configuration presets for AI Personas
 │   ├── index.css         # Tailwind v4 directives and theme variables
 │   └── components/
+│       ├── Auth.tsx      # Secure custom credentials login & registration panel
 │       ├── Sidebar.tsx   # Panel containing chat lists, insights, settings, & exports
 │       └── MessageItem.tsx # Chat bubble with copy, speech synthesis, and formatting
 ```
@@ -112,4 +126,6 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 
 ## 🔒 Security
 
-All API keys are secured server-side. The client application never exposes secret credentials or API headers directly to the browser. Communication with AI backends is proxied securely through server routes in `server.ts`.
+All API keys are secured server-side. The client application never exposes secret credentials or API headers directly to the browser. Communication with AI backends is proxied securely through server routes in `server.ts`. 
+
+In addition, user passwords are cryptographically salted and hashed using standard Node.js crypto primitives (`pbkdf2Sync` with 1000 iterations), ensuring robust workspace privacy.
