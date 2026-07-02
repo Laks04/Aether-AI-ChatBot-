@@ -47,6 +47,7 @@ interface SidebarProps {
   setSystemInstruction: (instr: string) => void;
   currentUser?: string | null;
   onLogout?: () => void;
+  onDeleteAccount?: () => void;
 }
 
 export default function Sidebar({
@@ -66,6 +67,7 @@ export default function Sidebar({
   setSystemInstruction,
   currentUser,
   onLogout,
+  onDeleteAccount,
 }: SidebarProps) {
   const [sidebarTab, setSidebarTab] = useState<"chats" | "settings" | "analytics">("chats");
 
@@ -517,15 +519,28 @@ export default function Sidebar({
                   <span className="text-[9px] text-slate-500 font-mono tracking-wider uppercase">Secure Sync</span>
                 </div>
               </div>
-              {onLogout && (
-                <button
-                  onClick={onLogout}
-                  className="px-2 py-1.5 rounded-lg border border-slate-800 hover:border-pink-500/40 hover:bg-pink-500/5 text-[9px] font-bold text-slate-400 hover:text-pink-400 transition-all uppercase tracking-wider shrink-0 cursor-pointer"
-                  id="logout-btn"
-                >
-                  Logout
-                </button>
-              )}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="px-2 py-1.5 rounded-lg border border-slate-800 hover:border-pink-500/40 hover:bg-pink-500/5 text-[9px] font-bold text-slate-400 hover:text-pink-400 transition-all uppercase tracking-wider cursor-pointer"
+                    id="logout-btn"
+                    title="Sign out of workspace"
+                  >
+                    Logout
+                  </button>
+                )}
+                {onDeleteAccount && (
+                  <button
+                    onClick={onDeleteAccount}
+                    className="px-2 py-1.5 rounded-lg border border-slate-800 hover:border-rose-500/40 hover:bg-rose-500/5 text-[9px] font-bold text-slate-500 hover:text-rose-400 transition-all uppercase tracking-wider cursor-pointer"
+                    id="delete-account-btn"
+                    title="Permanently erase workspace data"
+                  >
+                    Purge
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="flex items-center justify-between rounded-xl bg-slate-900/40 p-3">

@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import crypto from "crypto";
+import { PDFParse } from "pdf-parse";
 
 dotenv.config();
 
@@ -51,7 +52,7 @@ function hashPassword(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
 }
 
-function createUser(username: string, password: string) {
+function createUser(username: string, password: string, securityQuestion?: string, securityAnswer?: string) {
   const users = readJSONFile<any[]>(USERS_FILE, []);
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { error: "Username already exists. Please choose a different name." };
@@ -59,7 +60,15 @@ function createUser(username: string, password: string) {
   const salt = crypto.randomBytes(16).toString("hex");
   const passwordHash = hashPassword(password, salt);
   
-  users.push({ username, passwordHash, salt });
+  const newUser: any = { username, passwordHash, salt };
+  if (securityQuestion) {
+    newUser.securityQuestion = securityQuestion;
+  }
+  if (securityAnswer) {
+    newUser.securityAnswer = crypto.pbkdf2Sync(securityAnswer.trim().toLowerCase(), salt, 1000, 64, "sha512").toString("hex");
+  }
+  
+  users.push(newUser);
   writeJSONFile(USERS_FILE, users);
   return { success: true };
 }
@@ -71,6 +80,36 @@ function verifyUser(username: string, password: string) {
   
   const hash = hashPassword(password, user.salt);
   return hash === user.passwordHash;
+}
+
+function verifySecurityAnswer(username: string, answer: string): boolean {
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  if (!user) return false;
+  
+  // Legacy bypass support if user created their account before security questions existed
+  if (!user.securityAnswer) {
+    return answer.trim().toLowerCase() === "aetherspace";
+  }
+  
+  const hash = crypto.pbkdf2Sync(answer.trim().toLowerCase(), user.salt, 1000, 64, "sha512").toString("hex");
+  return hash === user.securityAnswer;
+}
+
+function resetUserPassword(username: string, newPassword: string): boolean {
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const index = users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+  if (index === -1) return false;
+  
+  let salt = users[index].salt;
+  if (!salt) {
+    salt = crypto.randomBytes(16).toString("hex");
+    users[index].salt = salt;
+  }
+  
+  users[index].passwordHash = hashPassword(newPassword, salt);
+  writeJSONFile(USERS_FILE, users);
+  return true;
 }
 
 // Active Sessions persistence
@@ -315,12 +354,12 @@ app.post("/api/chat/stream", authenticateToken, async (req, res) => {
 // --- AUTH API ROUTES ---
 
 app.post("/api/auth/register", (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, securityQuestion, securityAnswer } = req.body;
   if (!username || !password || username.trim().length < 2 || password.trim().length < 4) {
     return res.status(400).json({ error: "Username must be at least 2 characters and password at least 4 characters." });
   }
   
-  const result = createUser(username.trim(), password);
+  const result = createUser(username.trim(), password, securityQuestion, securityAnswer);
   if (result.error) {
     return res.status(400).json({ error: result.error });
   }
@@ -342,6 +381,72 @@ app.post("/api/auth/login", (req, res) => {
   
   const token = createSession(username.trim());
   res.json({ success: true, token, username: username.trim() });
+});
+
+app.get("/api/auth/forgot-password/get-question", (req, res) => {
+  const username = req.query.username as string;
+  if (!username) {
+    return res.status(400).json({ error: "Username is required." });
+  }
+  
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  
+  res.json({
+    username: user.username,
+    securityQuestion: user.securityQuestion || null
+  });
+});
+
+app.post("/api/auth/forgot-password/reset", (req, res) => {
+  const { username, securityAnswer, newPassword } = req.body;
+  if (!username || !securityAnswer || !newPassword || newPassword.trim().length < 4) {
+    return res.status(400).json({ error: "Username, correct recovery answer, and new password (min 4 characters) are required." });
+  }
+  
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  
+  const isAnswerValid = verifySecurityAnswer(user.username, securityAnswer);
+  if (!isAnswerValid) {
+    return res.status(401).json({ error: "Incorrect recovery answer." });
+  }
+  
+  const success = resetUserPassword(user.username, newPassword);
+  if (!success) {
+    return res.status(500).json({ error: "Failed to reset password." });
+  }
+  
+  res.json({ success: true, message: "Passkey successfully reset. You can now Sign In." });
+});
+
+app.post("/api/auth/delete-account", authenticateToken, (req: any, res) => {
+  const username = req.username;
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+  
+  // 1. Remove user from users.json
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const updatedUsers = users.filter(u => u.username.toLowerCase() !== username.toLowerCase());
+  writeJSONFile(USERS_FILE, updatedUsers);
+  
+  // 2. Remove user sessions from sessions.json
+  const sessions = readJSONFile<any[]>(SESSIONS_FILE, []);
+  const updatedSessions = sessions.filter(s => s.username.toLowerCase() !== username.toLowerCase());
+  writeJSONFile(SESSIONS_FILE, updatedSessions);
+  
+  // 3. Remove user conversations (which also houses the embedded documents) from conversations.json
+  const conversations = readJSONFile<any[]>(CONVERSATIONS_FILE, []);
+  const updatedConvs = conversations.filter(c => c.username.toLowerCase() !== username.toLowerCase());
+  writeJSONFile(CONVERSATIONS_FILE, updatedConvs);
+  
+  res.json({ success: true, message: "Account and all associated sandbox records have been permanently purged." });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -421,6 +526,35 @@ app.delete("/api/conversations/:id", authenticateToken, (req: any, res) => {
   const updated = conversations.filter(c => c.id !== id);
   writeJSONFile(CONVERSATIONS_FILE, updated);
   res.json({ success: true });
+});
+
+app.post("/api/parse-pdf", authenticateToken, async (req: any, res) => {
+  try {
+    const { base64, filename } = req.body;
+    if (!base64) {
+      return res.status(400).json({ error: "Base64 encoded PDF file data is required" });
+    }
+    
+    // Remove data:application/pdf;base64, header if present
+    const cleanBase64 = base64.replace(/^data:application\/pdf;base64,/, "");
+    const buffer = Buffer.from(cleanBase64, "base64");
+    
+    // Parse PDF
+    const parser = new PDFParse({ data: buffer });
+    const parsedText = await parser.getText();
+    const parsedInfo = await parser.getInfo();
+    
+    res.json({
+      success: true,
+      text: parsedText.text || "",
+      pages: parsedText.total || parsedInfo.total || 1,
+      info: parsedInfo.info || {},
+      metadata: parsedInfo.metadata || {}
+    });
+  } catch (err: any) {
+    console.error("PDF Parsing Error:", err);
+    res.status(500).json({ error: "Failed to parse the PDF document. " + (err.message || "") });
+  }
 });
 
 // Setup Vite development middleware or static production serving

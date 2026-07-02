@@ -5,6 +5,14 @@ export interface Message {
   timestamp: string; // ISO string
 }
 
+export interface DocumentAttachment {
+  id: string;
+  name: string;
+  text: string;
+  size: number;
+  pages?: number;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -13,6 +21,7 @@ export interface Conversation {
   temperature: number;
   modelName: string;
   createdAt: string;
+  documents?: DocumentAttachment[];
 }
 
 export interface PersonaPreset {

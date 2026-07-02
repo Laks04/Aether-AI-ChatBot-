@@ -19,6 +19,11 @@ Aether is designed with a striking **Cosmic Slate Theme** (deep slate blues, ric
 *   **💾 Infinite Memory & Persistent Storage**: 
     *   All chats, presets, and customized system parameters are synchronized to the server in real-time.
     *   Memory is persisted inside the container's disk (`data/conversations.json`), guaranteeing that user history remains intact **even after hard browser refreshes, cache clearances, or device switching**.
+*   **📄 Seamless System Document Importer & PDF Q&A**:
+    *   Direct system document imports supporting **PDF, TXT, MD, JSON, JS, TS, HTML, and CSS**.
+    *   **Server-Side PDF Parsing Engine**: Leverages `pdf-parse` on Node.js to decode complex PDF file structures via an asynchronous base64 gateway.
+    *   **Direct Client-Side Text Parsing**: Zero-overhead extraction for raw text files using HTML5 `FileReader` primitives.
+    *   **Surgical Context Stuffing**: Injects parsed file contents as isolated references inside the prompt of the latest query, enabling the AI to answer deep, grounded questions about the uploaded document context.
 *   **🗑️ Secure Chat Deletion**:
     *   Full administrative control with the option to instantly and permanently erase individual conversations from both the UI and the server's filesystem storage.
 *   **⚡ Multiple Aether Core Models**: Configured to access highly optimized LLM backends tailored for different tasks:

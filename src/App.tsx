@@ -22,7 +22,11 @@ import {
   BookOpen,
   ArrowUpRight,
   Code2,
-  Globe
+  Globe,
+  Paperclip,
+  FileText,
+  X,
+  Loader2
 } from "lucide-react";
 import { Conversation, Message, PersonaPreset } from "./types";
 import { PERSONA_PRESETS } from "./presets";
@@ -148,8 +152,19 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [hasGroqApiKey, setHasGroqApiKey] = useState<boolean | null>(null);
 
+  // Document Upload States
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+
+  // Account Deletion States
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch all conversations for the authenticated user from backend
   const fetchConversations = async (token: string) => {
@@ -233,6 +248,52 @@ export default function App() {
     setConversations([]);
     setActiveConversationId(null);
     setIsAuthLoading(false);
+  };
+
+  // Permanently delete user account
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== currentUser?.toLowerCase()) {
+      setDeleteAccountError("Confirmation text does not match your username.");
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+
+    try {
+      const token = localStorage.getItem("aether_auth_token") || authToken;
+      if (token) {
+        const res = await fetch("/api/auth/delete-account", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to purge account data from container filesystem.");
+        }
+      }
+
+      // Clear all state (same as logout)
+      localStorage.removeItem("aether_auth_token");
+      localStorage.removeItem("aether_auth_username");
+      localStorage.removeItem(ACTIVE_CONV_KEY);
+      setAuthToken(null);
+      setCurrentUser(null);
+      setConversations([]);
+      setActiveConversationId(null);
+      
+      // Reset confirmation states
+      setShowDeleteConfirm(false);
+      setDeleteConfirmText("");
+    } catch (err: any) {
+      console.error("Failed to delete account:", err);
+      setDeleteAccountError(err.message || "An unexpected error occurred during account purge.");
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
 
   // Verify auth session on mount
@@ -410,6 +471,109 @@ export default function App() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversationId) return;
+
+    setIsUploadingFile(true);
+    setFileUploadError(null);
+
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error("File size exceeds 10MB limit.");
+      }
+
+      let parsedText = "";
+      let totalPages: number | undefined;
+
+      if (extension === "pdf") {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+        });
+
+        const res = await fetch("/api/parse-pdf", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            base64,
+            filename: file.name
+          })
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Failed to parse PDF (${res.status})`);
+        }
+
+        const data = await res.json();
+        parsedText = data.text;
+        totalPages = data.pages;
+      } else if (["txt", "md", "json", "js", "ts", "tsx", "html", "css"].includes(extension || "")) {
+        parsedText = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsText(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+        });
+      } else {
+        throw new Error("Unsupported file format. Please upload a PDF, TXT, MD, or JSON file.");
+      }
+
+      if (!parsedText || parsedText.trim().length === 0) {
+        throw new Error("No readable text was extracted from this file.");
+      }
+
+      const newDoc = {
+        id: `doc-${Date.now()}`,
+        name: file.name,
+        text: parsedText,
+        size: file.size,
+        pages: totalPages
+      };
+
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          const updatedDocs = [...(c.documents || []), newDoc];
+          return {
+            ...c,
+            documents: updatedDocs
+          };
+        }
+        return c;
+      }));
+
+    } catch (err: any) {
+      console.error("File upload/parse error:", err);
+      setFileUploadError(err.message || "Failed to process the uploaded file.");
+    } finally {
+      setIsUploadingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveDocument = (docId: string) => {
+    if (!activeConversationId) return;
+    setConversations(prev => prev.map(c => {
+      if (c.id === activeConversationId) {
+        return {
+          ...c,
+          documents: (c.documents || []).filter(d => d.id !== docId)
+        };
+      }
+      return c;
+    }));
+  };
+
   const activeConversation = conversations.find(c => c.id === activeConversationId);
 
   const filteredMessages = activeConversation?.messages.filter(msg => 
@@ -481,6 +645,18 @@ export default function App() {
         role: m.role,
         content: m.content
       }));
+
+      // Inject document attachments context to latest user message
+      if (activeConversation?.documents && activeConversation.documents.length > 0) {
+        const lastIndex = payloadMessages.length - 1;
+        if (lastIndex >= 0 && payloadMessages[lastIndex].role === "user") {
+          const docContext = activeConversation.documents.map(doc => {
+            return `[DOCUMENT SOURCE: "${doc.name}" (${doc.pages ? doc.pages + ' pages' : ''})]\n${doc.text}\n[END OF DOCUMENT SOURCE]`;
+          }).join("\n\n");
+          
+          payloadMessages[lastIndex].content = `Here is the reference document context:\n\n${docContext}\n\nBased on the reference document above, answer the user query: ${payloadMessages[lastIndex].content}`;
+        }
+      }
 
       const response = await fetch("/api/chat/stream", {
         method: "POST",
@@ -658,6 +834,7 @@ export default function App() {
         setSystemInstruction={handleSystemInstructionChange}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onDeleteAccount={() => setShowDeleteConfirm(true)}
       />
 
       {/* Main Chat Panel */}
@@ -849,19 +1026,88 @@ export default function App() {
 
         {/* Input Bar Section with full Elegant Dark styling */}
         <div className="p-6 bg-gradient-to-t from-[#09090b] via-[#09090b] to-transparent sticky bottom-0 z-10 border-t border-purple-950/10">
-          <div className="max-w-4xl mx-auto relative">
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Aether anything... (Shift + Enter for new line)"
-              disabled={isGenerating}
-              className="w-full bg-slate-900/50 border border-slate-800/80 hover:border-pink-500/20 rounded-2xl py-4 pl-5 pr-14 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500/50 placeholder-slate-500 text-slate-200 resize-none min-h-[56px] transition-all"
-              style={{ height: "auto" }}
-              id="message-textarea"
-            />
+          <div className="max-w-4xl mx-auto space-y-3">
+            
+            {/* Active Document Attachment Pills */}
+            {activeConversation?.documents && activeConversation.documents.length > 0 && (
+              <div className="flex flex-wrap gap-2 bg-slate-900/30 border border-purple-950/15 rounded-xl p-2.5 animate-fade-in">
+                {activeConversation.documents.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-purple-500/20 text-xs font-mono"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-pink-400 shrink-0" />
+                    <span className="text-slate-200 font-medium max-w-[150px] truncate">{doc.name}</span>
+                    <span className="text-[10px] text-slate-500 font-bold shrink-0">
+                      {doc.pages ? `${doc.pages}p` : `${(doc.size / 1024).toFixed(1)}KB`}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveDocument(doc.id)}
+                      className="p-0.5 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-all cursor-pointer"
+                      title="Remove file context"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* File Upload/Parsing Error Callout */}
+            {fileUploadError && (
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-rose-300 font-medium">{fileUploadError}</p>
+                </div>
+                <button
+                  onClick={() => setFileUploadError(null)}
+                  className="p-0.5 rounded text-slate-500 hover:text-slate-300 cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            <div className="relative flex items-center">
+              {/* Hidden File Input Selector */}
+              <input 
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".pdf,.txt,.md,.json,.js,.ts,.tsx,.html,.css"
+                className="hidden"
+                id="file-import-input"
+              />
+
+              {/* File Upload Trigger Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isGenerating || isUploadingFile}
+                className="absolute left-3.5 p-2 text-slate-500 hover:text-pink-400 disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center rounded-xl hover:bg-slate-800/40 animate-pulse-slow"
+                title="Import system document (PDF, TXT, MD, JSON)"
+                id="file-import-trigger"
+              >
+                {isUploadingFile ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-pink-400" />
+                ) : (
+                  <Paperclip className="h-5 w-5" />
+                )}
+              </button>
+
+              <textarea
+                ref={inputRef}
+                rows={1}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask Aether anything... (Shift + Enter for new line)"
+                disabled={isGenerating}
+                className="w-full bg-slate-900/50 border border-slate-800/80 hover:border-pink-500/20 rounded-2xl py-4 pl-14 pr-14 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500/50 placeholder-slate-500 text-slate-200 resize-none min-h-[56px] transition-all"
+                style={{ height: "auto" }}
+                id="message-textarea"
+              />
             <button
               onClick={() => handleSendMessage()}
               disabled={isGenerating || !inputMessage.trim()}
@@ -875,12 +1121,105 @@ export default function App() {
             >
               <Send className="h-5 w-5" />
             </button>
+            </div>
           </div>
           <p className="text-[10px] text-center text-slate-600 mt-3 uppercase tracking-widest font-semibold">
             Aether AI can provide inaccurate info. Verify your code.
           </p>
         </div>
       </main>
+
+      {/* Account Deletion Confirmation Overlay */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-slate-950 border border-rose-950/40 rounded-3xl p-6 shadow-2xl relative overflow-hidden"
+            >
+              {/* Top Warning Accent Line */}
+              <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-red-600 to-rose-500 opacity-80" />
+              
+              <div className="flex items-center gap-3 text-rose-500 mb-4">
+                <AlertCircle className="h-6 w-6 shrink-0" />
+                <h3 className="text-base font-bold uppercase tracking-wider">Purge Workspace Sandbox?</h3>
+              </div>
+
+              <div className="space-y-3.5 text-xs text-slate-400 leading-relaxed font-sans">
+                <p>
+                  This action is <span className="text-rose-400 font-bold">permanent and irreversible</span>. 
+                  Purging this space will completely erase:
+                </p>
+                <ul className="list-disc pl-4 space-y-1 text-slate-500">
+                  <li>Your user credentials and access keys</li>
+                  <li>All of your private conversation history</li>
+                  <li>Every system document and reference file you imported</li>
+                </ul>
+                <p>
+                  All associated resources stored on the container's volume filesystem will be wiped clean.
+                </p>
+
+                {deleteAccountError && (
+                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 p-2.5 rounded-lg font-medium text-[11px]">
+                    {deleteAccountError}
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    To confirm, please type your username <code className="text-pink-400 font-bold bg-slate-900 px-1.5 py-0.5 rounded font-mono">{currentUser}</code> below:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter username"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    disabled={isDeletingAccount}
+                    className="w-full bg-slate-900/45 border border-slate-900 hover:border-slate-800 focus:border-rose-500/40 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none placeholder-slate-600 text-slate-200 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteConfirmText("");
+                    setDeleteAccountError(null);
+                  }}
+                  disabled={isDeletingAccount}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-400 bg-slate-900 hover:bg-slate-900/60 border border-slate-900 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount || deleteConfirmText.trim().toLowerCase() !== currentUser?.toLowerCase()}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider text-white bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-900/20 cursor-pointer"
+                >
+                  {isDeletingAccount ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Purging...</span>
+                    </>
+                  ) : (
+                    <span>Purge Space</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
