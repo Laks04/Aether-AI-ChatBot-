@@ -1,4 +1,4 @@
-# Aether AI ChatBot     [![Live Site](https://img.shields.io/badge/Live%20Site-cccccc?style=for-the-badge&logo=googlechrome)](aether-ai-chat-bot.vercel.app)
+# Aether AI ChatBot     [![Live Site](https://img.shields.io/badge/Live%20Site-cccccc?style=for-the-badge&logo=googlechrome)](https://aether-ai-chat-bot.vercel.app/)
 
 A sleek, modern, high-contrast workspace crafted in **React 19**, **Vite**, and **Express**, with beautiful fluid animations powered by **motion** (Framer Motion) and styled with the precision of **Tailwind CSS v4**. 
 
