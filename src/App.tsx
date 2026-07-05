@@ -33,7 +33,7 @@ import { PERSONA_PRESETS } from "./presets";
 import Sidebar from "./components/Sidebar";
 import MessageItem from "./components/MessageItem";
 import { motion, AnimatePresence } from "motion/react";
-import Auth from "./components/Auth";
+import Auth, { safeParseJson } from "./components/Auth";
 
 const LOCAL_STORAGE_KEY = "gemini_chatbot_conversations";
 const ACTIVE_CONV_KEY = "gemini_chatbot_active_id";
@@ -152,6 +152,7 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [hasGroqApiKey, setHasGroqApiKey] = useState<boolean | null>(null);
   const [noUsersExist, setNoUsersExist] = useState<boolean>(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   // Document Upload States
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -176,7 +177,7 @@ export default function App() {
         }
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         setConversations(data);
         
         const storedActiveId = localStorage.getItem(ACTIVE_CONV_KEY);
@@ -272,7 +273,7 @@ export default function App() {
         });
 
         if (!res.ok) {
-          const data = await res.json();
+          const data = await safeParseJson(res);
           throw new Error(data.error || "Failed to purge account data from container filesystem.");
         }
       }
@@ -305,7 +306,7 @@ export default function App() {
 
     // Check configuration
     fetch("/api/config")
-      .then((res) => res.json())
+      .then((res) => safeParseJson(res))
       .then((data) => {
         setHasApiKey(data.hasApiKey);
         setHasGroqApiKey(data.hasGroqApiKey);
@@ -315,6 +316,7 @@ export default function App() {
       })
       .catch((err) => {
         console.error("Failed to fetch config:", err);
+        setConfigError(err.message || "Could not reach the backend configuration service. Please check if the server is running.");
       });
 
     if (token && storedUser) {
@@ -323,7 +325,7 @@ export default function App() {
           "Authorization": `Bearer ${token}`
         }
       })
-        .then((res) => res.json())
+        .then((res) => safeParseJson(res))
         .then((data) => {
           if (data.authenticated) {
             setAuthToken(token);
@@ -514,11 +516,11 @@ export default function App() {
         });
 
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
+          const data = await safeParseJson(res).catch(() => ({}));
           throw new Error(data.error || `Failed to parse PDF (${res.status})`);
         }
 
-        const data = await res.json();
+        const data = await safeParseJson(res);
         parsedText = data.text;
         totalPages = data.pages;
       } else if (["txt", "md", "json", "js", "ts", "tsx", "html", "css"].includes(extension || "")) {
@@ -678,7 +680,7 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await safeParseJson(response).catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
@@ -815,6 +817,7 @@ export default function App() {
           fetchConversations(token);
         }} 
         noUsersExist={noUsersExist}
+        configError={configError}
       />
     );
   }

@@ -15,9 +15,24 @@ import {
   CheckCircle 
 } from "lucide-react";
 
+export async function safeParseJson(res: Response): Promise<any> {
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    const text = await res.text();
+    if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html") || text.trim().startsWith("The page")) {
+      throw new Error(
+        "The server returned HTML instead of JSON. This typically happens when the application is deployed on a static-only hosting provider (like Vercel or Netlify) which does not run the backend Express server. Please deploy this application to a container-based platform like Google Cloud Run, Heroku, or Render to enable full-stack backend features."
+      );
+    }
+    throw new Error(`Expected JSON response, but received: ${contentType || "plain text"}`);
+  }
+  return res.json();
+}
+
 interface AuthProps {
   onSuccess: (token: string, username: string) => void;
   noUsersExist?: boolean;
+  configError?: string | null;
 }
 
 const SECURITY_QUESTIONS = [
@@ -28,7 +43,7 @@ const SECURITY_QUESTIONS = [
   "What was the name of your first school?",
 ];
 
-export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
+export default function Auth({ onSuccess, noUsersExist, configError }: AuthProps) {
   const [isLogin, setIsLogin] = useState(!noUsersExist);
   const [username, setUsername] = useState("");
 
@@ -102,7 +117,7 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data = await safeParseJson(response);
 
       if (!response.ok) {
         throw new Error(data.error || "Authentication failed. Please check your inputs.");
@@ -126,7 +141,7 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
 
     try {
       const res = await fetch(`/api/auth/forgot-password/get-question?username=${encodeURIComponent(recoveryUsername.trim())}`);
-      const data = await res.json();
+      const data = await safeParseJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || "Workspace username not found.");
@@ -152,7 +167,7 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
       const res = await fetch("/api/auth/reset-sandbox", {
         method: "POST"
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to reset sandbox.");
       }
@@ -197,7 +212,7 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeParseJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || "Failed to reset passkey.");
@@ -262,6 +277,18 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
         </div>
 
 
+
+        {configError && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 mb-5 flex items-start gap-2.5">
+            <AlertCircle className="h-4.5 w-4.5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="font-bold text-amber-300">Backend Server Warning</p>
+              <p className="text-slate-300 mt-1 leading-relaxed">
+                {configError}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Error Callout */}
         <AnimatePresence mode="wait">
