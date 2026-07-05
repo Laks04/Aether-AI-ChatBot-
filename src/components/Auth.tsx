@@ -141,6 +141,33 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
     }
   };
 
+  const handleResetSandbox = async () => {
+    if (!window.confirm("WARNING: This will permanently wipe all users, login credentials, and conversations from this local workspace container. Are you absolutely sure you want to reset?")) {
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/reset-sandbox", {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset sandbox.");
+      }
+      setSuccessMessage("Workspace sandbox successfully wiped! Please register a new account.");
+      setIsLogin(false);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err: any) {
+      setError(err.message || "An error occurred while resetting the workspace.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleForgotPasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -518,6 +545,20 @@ export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
                     "Search Space Question"
                   )}
                 </button>
+
+                <div className="border-t border-purple-950/15 pt-4 mt-3">
+                  <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                    Forgot your recovery answer as well? You can wipe the sandbox to register a fresh profile.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleResetSandbox}
+                    disabled={isLoading}
+                    className="w-full mt-2 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider text-rose-400/80 hover:text-rose-400 hover:bg-rose-950/10 border border-rose-950/30 hover:border-rose-900/40 transition-all cursor-pointer text-center"
+                  >
+                    Reset Workspace Sandbox
+                  </button>
+                </div>
               </form>
             )}
 

@@ -452,6 +452,18 @@ app.post("/api/auth/delete-account", authenticateToken, (req: any, res) => {
   res.json({ success: true, message: "Account and all associated sandbox records have been permanently purged." });
 });
 
+app.post("/api/auth/reset-sandbox", (req, res) => {
+  try {
+    writeJSONFile(USERS_FILE, []);
+    writeJSONFile(SESSIONS_FILE, []);
+    writeJSONFile(CONVERSATIONS_FILE, []);
+    res.json({ success: true, message: "Workspace sandbox database has been successfully reset. You can now register a new account." });
+  } catch (err: any) {
+    console.error("Failed to reset sandbox:", err);
+    res.status(500).json({ error: "Failed to reset sandbox data: " + (err.message || "") });
+  }
+});
+
 app.post("/api/auth/logout", (req, res) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
