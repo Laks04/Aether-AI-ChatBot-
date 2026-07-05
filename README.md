@@ -67,12 +67,8 @@ flowchart TD
     P --> Q
     Q --> R[POST /api/chat/stream<br/>messages + systemInstruction + temperature + modelName]
 
-    R --> S{Model provider?}
-    S -- groq:* --> T[Stream from Groq API<br/>Llama 3.3 70B etc.]
-    S -- gemini/default --> U[Stream from Gemini API<br/>with fallback chain:<br/>2.5-flash → 2.0-flash → 1.5-flash]
-
-    T --> V[Server-Sent Events streamed to client]
-    U --> V
+    R --> T[Server calls Groq API<br/>Llama 3.3 70B, OpenAI-compatible endpoint]
+    T --> V[Response streamed to client via Server-Sent Events]
     V --> W[UI renders tokens live, markdown formatted]
     W --> X[POST /api/conversations<br/>save updated conversation]
 
@@ -85,9 +81,8 @@ flowchart TD
 2. **Persistence** — Users, sessions, and conversations are stored as flat JSON files (`data/users.json`, `sessions.json`, `conversations.json`), read and written through safe file I/O helpers — no external database required.
 3. **Persona presets** — Five built-in system-prompt presets (General, Software Engineer, Creative Writer, Language Coach, Analyst & Summarizer) configure the system instruction and temperature before a chat starts.
 4. **Document context** — Uploaded PDFs are parsed server-side with `pdf-parse`, and the extracted text is injected directly into the conversation context so the model can answer questions grounded in the document.
-5. **Multi-model routing** — A single `/api/chat/stream` endpoint routes to either the Groq API (OpenAI-compatible chat completions) or the Gemini API depending on the `modelName` prefix, streaming both back to the client over Server-Sent Events.
-6. **Resilience** — If the requested Gemini model is unavailable, the server automatically falls back through a chain (`gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-1.5-flash`) and notifies the user inline when a fallback was used.
-7. **Session lifecycle** — Conversations are saved back to disk after each exchange, can be exported (Markdown/JSON), read aloud via speech synthesis, and a user can fully purge their account (users, sessions, conversations) in one action.
+5. **Inference** — A single `/api/chat/stream` endpoint forwards the conversation to the Groq API (OpenAI-compatible chat completions, Llama 3.3 70B) and streams the response back to the client over Server-Sent Events.
+6. **Session lifecycle** — Conversations are saved back to disk after each exchange, can be exported (Markdown/JSON), read aloud via speech synthesis, and a user can fully purge their account (users, sessions, conversations) in one action.
 
 ## Architecture
 
@@ -114,8 +109,7 @@ flowchart TB
         S3[conversations.json]
     end
 
-    subgraph External["External AI providers"]
-        E1[Google Gemini API<br/>via @google/genai]
+    subgraph External["External AI provider"]
         E2[Groq API<br/>Llama 3.3 70B, OpenAI-compatible]
     end
 
@@ -129,7 +123,6 @@ flowchart TB
     B3 --> S3
     B4 -->|pdf-parse| A1
     B5 -->|SSE stream| A1
-    B5 --> E1
     B5 --> E2
     A3 --> A1
     A4 --> A1
@@ -144,11 +137,12 @@ flowchart TB
 | Icons / animation | lucide-react, motion |
 | Markdown rendering | react-markdown |
 | Backend | Express 4, tsx (TypeScript runtime) |
-| LLM providers |  Groq API (Llama 3.3 70B) |
+| LLM provider | Groq API (Llama 3.3 70B, OpenAI-compatible chat completions) |
 | PDF parsing | pdf-parse |
 | Auth | Custom PBKDF2 password hashing + token-based sessions (no external auth library) |
 | Data storage | Flat JSON files (`data/users.json`, `sessions.json`, `conversations.json`) |
 | Build | Vite (frontend) + esbuild (server bundle) |
+
 
 ## 🚀 Getting Started
 
