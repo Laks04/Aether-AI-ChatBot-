@@ -176,9 +176,11 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // API route to check server status and API key config
 app.get("/api/config", (req, res) => {
+  const users = readJSONFile<any[]>(USERS_FILE, []);
   res.json({
     hasApiKey: !!process.env.GEMINI_API_KEY,
     hasGroqApiKey: !!process.env.GROQ_API_KEY,
+    noUsersExist: users.length === 0,
   });
 });
 

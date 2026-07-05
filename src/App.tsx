@@ -151,6 +151,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [hasGroqApiKey, setHasGroqApiKey] = useState<boolean | null>(null);
+  const [noUsersExist, setNoUsersExist] = useState<boolean>(false);
 
   // Document Upload States
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -284,6 +285,7 @@ export default function App() {
       setCurrentUser(null);
       setConversations([]);
       setActiveConversationId(null);
+      setNoUsersExist(true);
       
       // Reset confirmation states
       setShowDeleteConfirm(false);
@@ -307,6 +309,9 @@ export default function App() {
       .then((data) => {
         setHasApiKey(data.hasApiKey);
         setHasGroqApiKey(data.hasGroqApiKey);
+        if (data.noUsersExist !== undefined) {
+          setNoUsersExist(data.noUsersExist);
+        }
       })
       .catch((err) => {
         console.error("Failed to fetch config:", err);
@@ -809,6 +814,7 @@ export default function App() {
           setIsAuthLoading(true);
           fetchConversations(token);
         }} 
+        noUsersExist={noUsersExist}
       />
     );
   }

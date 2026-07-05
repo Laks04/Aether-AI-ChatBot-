@@ -17,6 +17,7 @@ import {
 
 interface AuthProps {
   onSuccess: (token: string, username: string) => void;
+  noUsersExist?: boolean;
 }
 
 const SECURITY_QUESTIONS = [
@@ -27,9 +28,15 @@ const SECURITY_QUESTIONS = [
   "What was the name of your first school?",
 ];
 
-export default function Auth({ onSuccess }: AuthProps) {
-  const [isLogin, setIsLogin] = useState(true);
+export default function Auth({ onSuccess, noUsersExist }: AuthProps) {
+  const [isLogin, setIsLogin] = useState(!noUsersExist);
   const [username, setUsername] = useState("");
+
+  React.useEffect(() => {
+    if (noUsersExist) {
+      setIsLogin(false);
+    }
+  }, [noUsersExist]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -226,6 +233,8 @@ export default function Auth({ onSuccess }: AuthProps) {
             </p>
           </div>
         </div>
+
+
 
         {/* Error Callout */}
         <AnimatePresence mode="wait">
