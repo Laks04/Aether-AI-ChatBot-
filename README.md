@@ -1,4 +1,7 @@
-# Aether AI ChatBot  [![Live Site](https://img.shields.io/badge/Live%20Site-cccccc?style=for-the-badge&logo=googlechrome)](https://aether-ai-chatbot.onrender.com) 
+# Aether AI ChatBot  [![Live Site](https://img.shields.io/badge/Live%20Site-cccccc?style=for-the-badge&logo=googlechrome)](https://aether-ai-chatbot.onrender.com)
+
+<img width="622" height="707" alt="image" src="https://github.com/user-attachments/assets/aef48160-54c2-4b1e-8d4e-f38398b3b1e8" />
+
 
 A sleek, modern, high-contrast workspace crafted in **React 19**, **Vite**, and **Express**, with beautiful fluid animations powered by **motion** (Framer Motion) and styled with the precision of **Tailwind CSS v4**. 
 
